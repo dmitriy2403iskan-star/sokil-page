@@ -5,11 +5,16 @@ plugins {
 android {
     namespace 'com.mk15.analyzer'
     compileSdk 35
+
     defaultConfig {
         applicationId 'com.mk15.analyzer'
         minSdk 23
         targetSdk 28
-        versionCode 1
-        versionName '1.0'
+        versionCode (project.findProperty('versionCode') ?: '2').toString().toInteger()
+        versionName (project.findProperty('versionName') ?: '2.0.0').toString()
     }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
 }
