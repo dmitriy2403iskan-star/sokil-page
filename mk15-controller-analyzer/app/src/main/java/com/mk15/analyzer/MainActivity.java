@@ -21,6 +21,8 @@ import java.util.*;
 public class MainActivity extends Activity {
     TextView output;
     String report = "";
+    boolean captureInput = false;
+    final ArrayList<String> inputEvents = new ArrayList<>();
 
     public void onCreate(Bundle b) {
         super.onCreate(b);
@@ -28,14 +30,23 @@ public class MainActivity extends Activity {
         root.setOrientation(1);
         root.setPadding(22,22,22,22);
         TextView title = new TextView(this);
-        title.setText("MK15 Controller Analyzer");
-        title.setTextSize(23);
+        title.setText("MK15 Controller Analyzer — Extended");
+        title.setTextSize(22);
         root.addView(title);
+        TextView hint = new TextView(this);
+        hint.setText("Расширенная диагностика. Сначала запусти тест ввода, подвигай стики, затем останови и собери отчёт.");
+        root.addView(hint);
+        Button startInput = new Button(this);
+        startInput.setText("Начать тест стиков / ввода");
+        root.addView(startInput);
+        Button stopInput = new Button(this);
+        stopInput.setText("Остановить тест ввода");
+        root.addView(stopInput);
         Button scan = new Button(this);
-        scan.setText("Собрать отчёт");
+        scan.setText("Собрать расширенный отчёт");
         root.addView(scan);
         Button share = new Button(this);
-        share.setText("Отправить через Telegram");
+        share.setText("Отправить отчёт через Telegram");
         root.addView(share);
         Button save = new Button(this);
         save.setText("Сохранить TXT");
@@ -46,12 +57,21 @@ public class MainActivity extends Activity {
         root.addView(scroll, new LinearLayout.LayoutParams(-1,0,1));
         setContentView(root);
 
+        startInput.setOnClickListener(v -> {
+            inputEvents.clear();
+            captureInput = true;
+            output.setText("Тест запущен. Подвигай физические стики и органы управления 10–20 секунд, затем нажми «Остановить тест ввода».");
+        });
+        stopInput.setOnClickListener(v -> {
+            captureInput = false;
+            output.setText("Тест остановлен. Записано событий движения: "+inputEvents.size());
+        });
         scan.setOnClickListener(v -> { report = collect(); output.setText(report); });
         share.setOnClickListener(v -> {
             if (report.isEmpty()) report = collect();
             Intent i = new Intent(Intent.ACTION_SEND);
             i.setType("text/plain");
-            i.putExtra(Intent.EXTRA_SUBJECT, "MK15 Analyzer report");
+            i.putExtra(Intent.EXTRA_SUBJECT, "MK15 Extended Analyzer report");
             i.putExtra(Intent.EXTRA_TEXT, report);
             startActivity(Intent.createChooser(i, "Отправить отчёт"));
         });
@@ -60,9 +80,29 @@ public class MainActivity extends Activity {
             Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("text/plain");
-            i.putExtra(Intent.EXTRA_TITLE, "MK15_Analyzer_Report.txt");
+            i.putExtra(Intent.EXTRA_TITLE, "MK15_Extended_Analyzer_Report.txt");
             startActivityForResult(i, 7);
         });
+        output.setText("Готово к диагностике. Для проверки стиков сначала запусти тест ввода.");
+    }
+
+    @Override
+    public boolean onGenericMotionEvent(MotionEvent e) {
+        if (captureInput && e.getAction()==MotionEvent.ACTION_MOVE && inputEvents.size()<300) {
+            InputDevice d=e.getDevice();
+            StringBuilder line=new StringBuilder();
+            line.append("t=").append(System.currentTimeMillis())
+                .append(" deviceId=").append(e.getDeviceId())
+                .append(" device=").append(d==null?"unknown":d.getName())
+                .append(" source=0x").append(Integer.toHexString(e.getSource()))
+                .append(" action=").append(e.getAction());
+            for(int axis=0;axis<=15;axis++) {
+                float value=e.getAxisValue(axis);
+                if(value!=0f) line.append(" axis").append(axis).append("=").append(value);
+            }
+            inputEvents.add(line.toString());
+        }
+        return super.onGenericMotionEvent(e);
     }
 
     protected void onActivityResult(int req, int res, Intent data) {
@@ -77,9 +117,9 @@ public class MainActivity extends Activity {
 
     String collect() {
         StringBuilder s = new StringBuilder();
-        s.append("MK15 CONTROLLER ANALYZER\n");
+        s.append("MK15 CONTROLLER ANALYZER — EXTENDED\n");
         s.append("Date: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(new Date())).append("\n");
-        s.append("Read-only diagnostic report. No network access, no settings changes.\n\n");
+        s.append("Read-only diagnostics. No network access, no settings changes, no serial-port access.\n\n");
         s.append("=== DEVICE ===\n");
         line(s,"Manufacturer",Build.MANUFACTURER); line(s,"Brand",Build.BRAND);
         line(s,"Model",Build.MODEL); line(s,"Device",Build.DEVICE);
@@ -87,7 +127,7 @@ public class MainActivity extends Activity {
         line(s,"Board",Build.BOARD); line(s,"Android",Build.VERSION.RELEASE);
         line(s,"SDK",String.valueOf(Build.VERSION.SDK_INT)); line(s,"Build",Build.DISPLAY);
         line(s,"Fingerprint",Build.FINGERPRINT);
-        s.append("\n=== INPUT DEVICES / AXES ===\n");
+        s.append("\n=== INPUT DEVICES / AXES (CURRENTLY EXPOSED) ===\n");
         for(int id:InputDevice.getDeviceIds()) {
             InputDevice d=InputDevice.getDevice(id);
             if(d==null) continue;
@@ -95,10 +135,11 @@ public class MainActivity extends Activity {
             s.append("Descriptor: ").append(d.getDescriptor()).append("\n");
             s.append("Sources: 0x").append(Integer.toHexString(d.getSources())).append("\n");
             for(InputDevice.MotionRange r:d.getMotionRanges())
-                s.append("Axis ").append(r.getAxis()).append(" min=").append(r.getMin())
-                 .append(" max=").append(r.getMax()).append(" flat=").append(r.getFlat()).append("\n");
+                s.append("Axis ").append(r.getAxis()).append(" source=0x").append(Integer.toHexString(r.getSource()))
+                 .append(" min=").append(r.getMin()).append(" max=").append(r.getMax())
+                 .append(" flat=").append(r.getFlat()).append(" fuzz=").append(r.getFuzz()).append("\n");
         }
-        s.append("\n=== USB DEVICES ===\n");
+        s.append("\n=== USB DEVICES (BASIC) ===\n");
         try {
             UsbManager u=(UsbManager)getSystemService(Context.USB_SERVICE);
             Map<String,UsbDevice> ds=u.getDeviceList();
@@ -108,7 +149,7 @@ public class MainActivity extends Activity {
             if(ds.isEmpty()) s.append("No USB devices exposed to this app.\n");
         } catch(Exception e) { s.append("USB query failed: ").append(e.getClass().getSimpleName()).append("\n"); }
 
-        s.append("\n=== SIYI PACKAGE ===\n");
+        s.append("\n=== SIYI PACKAGE (BASIC) ===\n");
         try {
             PackageInfo p=getPackageManager().getPackageInfo("com.example.v1.remotecontrol", PackageManager.GET_SERVICES|PackageManager.GET_PERMISSIONS);
             line(s,"Package",p.packageName); line(s,"Version",p.versionName);
@@ -119,7 +160,7 @@ public class MainActivity extends Activity {
             if(p.requestedPermissions!=null) for(String x:p.requestedPermissions) s.append("Permission: ").append(x).append("\n");
         } catch(Exception e) { s.append("SIYI package not visible: ").append(e.getClass().getSimpleName()).append("\n"); }
 
-        s.append("\n=== SIYI SERVICE ACTIONS ===\n");
+        s.append("\n=== SIYI SERVICE ACTIONS (BASIC) ===\n");
         for(String action:new String[]{"com.example.mcuservice.action.MainService","com.example.mcuservice.action.RemoteControlService"}) {
             List<android.content.pm.ResolveInfo> found=getPackageManager().queryIntentServices(new Intent(action),0);
             s.append(action).append(": ").append(found.size()).append(" result(s)\n");
@@ -136,8 +177,15 @@ public class MainActivity extends Activity {
             s.append("Count: ").append(ps.size()).append("\n");
         } catch(Exception e) { s.append("Package listing unavailable: ").append(e.getClass().getSimpleName()).append("\n"); }
 
-        s.append("\n=== LIMITATIONS ===\n");
-        s.append("This app cannot inspect protected system data or private app data. It does not read serial ports, /dev/ttyHS1, radio data, credentials, messages, location or Wi-Fi passwords. Android may restrict package inventory and service visibility. Live stick values require an accessible SIYI API or input device.\n");
+        s.append("\n=== LIVE INPUT TEST ===\n");
+        s.append("Captured motion events: ").append(inputEvents.size()).append("\n");
+        if(inputEvents.isEmpty()) s.append("No generic motion events captured during the test. This does NOT prove the MCU has no stick data; it means Android did not deliver generic motion events to this app during that test.\n");
+        for(String event:inputEvents) s.append(event).append("\n");
+
+        ExtendedDiagnostics.append(this,s);
+
+        s.append("\n=== LIMITATIONS / INTERPRETATION ===\n");
+        s.append("This app only sees information exposed to an ordinary Android application. No private SIYI app memory, protected system data, serial port bytes, /dev/ttyHS1, radio data, credentials, messages, location or Wi-Fi passwords are read. A service listed by PackageManager is not proof that third-party binding is permitted. Empty live-input results do not rule out stick data inside the SIYI app or MCU. Actual J1-J4 values require a documented/accessible SIYI API or a safe supported input interface.\n");
         return s.toString();
     }
     void line(StringBuilder s,String k,String v){s.append(k).append(": ").append(v==null?"(null)":v).append("\n");}
