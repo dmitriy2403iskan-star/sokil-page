@@ -1,4 +1,4 @@
-name: Build MK15 Analyzer APK
+name: Build MK15 Toolkit APK
 on:
   push:
     paths:
@@ -10,6 +10,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -19,19 +24,37 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
-      - name: Build debug APK
+      - name: Verify signing secrets
+        shell: bash
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD repository secrets before building release APKs."
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/mk15-release.jks"
+      - name: Build signed release APK
         working-directory: mk15-controller-analyzer
-        run: gradle assembleDebug
+        env:
+          STORE_FILE: ${{ runner.temp }}/mk15-release.jks
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          gradle assembleRelease -PversionCode=${{ github.run_number }} -PversionName=2.0.${{ github.run_number }} \
+            -Pandroid.injected.signing.store.file="$STORE_FILE" \
+            -Pandroid.injected.signing.store.password="$STORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$KEY_PASSWORD"
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MK15-Controller-Analyzer-debug
-          path: mk15-controller-analyzer/app/build/outputs/apk/debug/app-debug.apk
+          name: MK15-Toolkit-release
+          path: mk15-controller-analyzer/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
-      - name: Publish APK as direct download
+      - name: Publish APK release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: mk15-build-${{ github.run_number }}
-          name: MK15 Analyzer build #${{ github.run_number }}
-          files: mk15-controller-analyzer/app/build/outputs/apk/debug/app-debug.apk
+          name: MK15 Toolkit 2.0.${{ github.run_number }}
+          files: mk15-controller-analyzer/app/build/outputs/apk/release/app-release.apk
           generate_release_notes: false
