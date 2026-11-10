@@ -5,6 +5,7 @@ plugins {
 android {
     namespace 'com.mk15.analyzer'
     compileSdk 35
+    buildFeatures { buildConfig true }
 
     defaultConfig {
         applicationId 'com.mk15.analyzer'
