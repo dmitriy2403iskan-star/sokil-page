@@ -51,6 +51,9 @@ public class MainActivity extends Activity {
         Button save = new Button(this);
         save.setText("Сохранить TXT");
         root.addView(save);
+        Button updates = new Button(this);
+        updates.setText("Проверить обновления");
+        root.addView(updates);
         output = new TextView(this);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(output);
@@ -83,7 +86,9 @@ public class MainActivity extends Activity {
             i.putExtra(Intent.EXTRA_TITLE, "MK15_Extended_Analyzer_Report.txt");
             startActivityForResult(i, 7);
         });
+        updates.setOnClickListener(v -> UpdateManager.checkForUpdates(this, true));
         output.setText("Готово к диагностике. Для проверки стиков сначала запусти тест ввода.");
+        UpdateManager.checkForUpdates(this, false);
     }
 
     @Override
