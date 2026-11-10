@@ -5,6 +5,8 @@ on:
       - 'mk15-controller-analyzer/**'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,9 +22,16 @@ jobs:
       - name: Build debug APK
         working-directory: mk15-controller-analyzer
         run: gradle assembleDebug
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: MK15-Controller-Analyzer-debug
           path: mk15-controller-analyzer/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Publish APK as direct download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mk15-build-${{ github.run_number }}
+          name: MK15 Analyzer build #${{ github.run_number }}
+          files: mk15-controller-analyzer/app/build/outputs/apk/debug/app-debug.apk
+          generate_release_notes: false
