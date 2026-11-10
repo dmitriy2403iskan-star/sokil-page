@@ -69,3 +69,34 @@ Android Generic System Image (GSI) — универсальная системн
 5. Отдельно оценить резервное копирование/восстановление по официальной документации.
 
 На этом этапе не выполняются операции с загрузчиком, разделами, прошивкой, закрытыми службами производителя, MCU, радиоканалом или аппаратным трактом управления.
+
+
+## 8. Read-only compatibility checks
+
+Official Android documentation identifies these read-only properties as the first checks for GSI eligibility:
+- `ro.treble.enabled` — whether Treble is enabled;
+- `ro.product.first_api_level` — Android API level the device originally launched with;
+- `ro.product.cpu.abi` — primary CPU ABI.
+
+The current diagnostic report confirms Android API 28 and ARM64 ABI for the running system, but it did not include the first-launch API level or Treble property. These values must not be guessed from the current Android version.
+
+### Windows PowerShell / ADB
+
+With the MK15 connected and USB debugging already authorized, these commands only read Android properties:
+
+```powershell
+.\adb.exe shell getprop ro.treble.enabled
+.\adb.exe shell getprop ro.product.first_api_level
+.\adb.exe shell getprop ro.product.cpu.abi
+```
+
+No settings are changed and no data is written. Do not run flashing, bootloader, partition, or erase commands as part of this check.
+
+Interpretation:
+- Treble must report `true` for GSI eligibility.
+- First API level should be `28` or higher for the standard Android 9+ GSI path.
+- ABI should be checked against the image architecture; the existing report indicates `arm64-v8a`.
+
+Even if these checks pass, that is not approval to install an image. Recovery availability and manufacturer-specific compatibility remain unverified.
+
+Reference: https://developer.android.com/topic/generic-system-image/
