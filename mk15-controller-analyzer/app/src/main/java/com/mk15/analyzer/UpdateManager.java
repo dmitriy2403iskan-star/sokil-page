@@ -33,6 +33,43 @@ final class UpdateManager {
     private static final String KEY_ID = "download_id";
     private static final String KEY_HASH = "expected_sha256";
     private static final String KEY_FILE = "download_file";
+    private static final String KEY_TARGET_VERSION = "target_version";
+    private static final String KEY_LAST_VERSION = "last_version_code";
+
+    static void onAppStart(Activity activity) {
+        android.content.SharedPreferences p = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        int previous = p.getInt(KEY_LAST_VERSION, 0);
+        if (previous > 0 && BuildConfig.VERSION_CODE > previous) {
+            record(activity, "update_install_success_detected; from=" + previous + "; to=" + BuildConfig.VERSION_CODE);
+        }
+        p.edit().putInt(KEY_LAST_VERSION, BuildConfig.VERSION_CODE).apply();
+        resumePendingDownload(activity);
+    }
+
+    private static void resumePendingDownload(Activity activity) {
+        android.content.SharedPreferences p = activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        long id = p.getLong(KEY_ID, -1);
+        if (id < 0) return;
+        try {
+            DownloadManager dm = (DownloadManager) activity.getSystemService(Context.DOWNLOAD_SERVICE);
+            android.database.Cursor cursor = dm.query(new DownloadManager.Query().setFilterById(id));
+            if (cursor == null) return;
+            int status;
+            try {
+                if (!cursor.moveToFirst()) return;
+                status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+            } finally { cursor.close(); }
+            if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                record(activity, "pending_download_found_on_start; id=" + id);
+                finishDownload(activity, id);
+            } else if (status == DownloadManager.STATUS_FAILED) {
+                record(activity, "pending_download_failed_before_app_resume; id=" + id);
+                p.edit().remove(KEY_ID).apply();
+            }
+        } catch (Exception e) {
+            record(activity, "pending_download_check_failed; " + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final String KEY_LOG = "event_log";
 
@@ -164,7 +201,8 @@ final class UpdateManager {
 
             activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putLong(KEY_ID, id).putString(KEY_HASH, expectedHash)
-                .putString(KEY_FILE, target.getAbsolutePath()).apply();
+                .putString(KEY_FILE, target.getAbsolutePath())
+                .putInt(KEY_TARGET_VERSION, version).apply();
 
             BroadcastReceiver receiver = new BroadcastReceiver() {
                 @Override public void onReceive(Context context, Intent intent) {
@@ -197,6 +235,8 @@ final class UpdateManager {
                 int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
                 if (status != DownloadManager.STATUS_SUCCESSFUL) {
                     int reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));
+                    activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_ID).apply();
+                    record(activity, "download_manager_failed; status=" + status + "; reason=" + reason);
                     throw new Exception("DownloadManager status=" + status + ", reason=" + reason);
                 }
             } finally { cursor.close(); }
@@ -213,6 +253,7 @@ final class UpdateManager {
                 throw new Exception("SHA-256 не совпал. APK удалён из соображений безопасности.");
             }
             record(activity, "download_complete_and_hash_verified; bytes=" + file.length());
+            activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_ID).apply();
             new AlertDialog.Builder(activity).setTitle("Обновление скачано")
                 .setMessage("Контрольная сумма совпала. Android проверит подпись приложения при установке.")
                 .setPositiveButton("Установить", (d, w) -> install(activity, file))
