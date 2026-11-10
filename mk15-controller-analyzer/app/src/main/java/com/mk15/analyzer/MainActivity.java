@@ -188,6 +188,7 @@ public class MainActivity extends Activity {
         for(String event:inputEvents) s.append(event).append("\n");
 
         ExtendedDiagnostics.append(this,s);
+        UpdateManager.appendDiagnostics(this,s);
 
         s.append("\n=== LIMITATIONS / INTERPRETATION ===\n");
         s.append("This app only sees information exposed to an ordinary Android application. No private SIYI app memory, protected system data, serial port bytes, /dev/ttyHS1, radio data, credentials, messages, location or Wi-Fi passwords are read. A service listed by PackageManager is not proof that third-party binding is permitted. Empty live-input results do not rule out stick data inside the SIYI app or MCU. Actual J1-J4 values require a documented/accessible SIYI API or a safe supported input interface.\n");
