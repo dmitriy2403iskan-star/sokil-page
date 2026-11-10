@@ -10,8 +10,8 @@ android {
         applicationId 'com.mk15.analyzer'
         minSdk 23
         targetSdk 28
-        versionCode (project.findProperty('versionCode') ?: '2').toString().toInteger()
-        versionName (project.findProperty('versionName') ?: '2.0.0').toString()
+        versionCode = (project.findProperty('versionCode') ?: '2').toString().toInteger()
+        versionName = (project.findProperty('versionName') ?: '2.0.0').toString()
     }
 }
 
