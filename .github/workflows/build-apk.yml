@@ -24,6 +24,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+      - name: Compile debug variant (source validation)
+        working-directory: mk15-controller-analyzer
+        run: gradle assembleDebug -PversionCode=${{ github.run_number }} -PversionName=2.0.${{ github.run_number }}
       - name: Verify signing secrets
         shell: bash
         run: |
