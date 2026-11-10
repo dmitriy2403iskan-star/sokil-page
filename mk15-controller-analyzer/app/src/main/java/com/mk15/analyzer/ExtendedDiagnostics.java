@@ -59,8 +59,8 @@ final class ExtendedDiagnostics {
             line(s,"Density dpi",String.valueOf(m.densityDpi));
             line(s,"Density scale",String.valueOf(m.density));
             line(s,"Scaled density",String.valueOf(m.scaledDensity));
-            line(s,"Refresh rate Hz",String.valueOf(c.getWindowManager().getDefaultDisplay().getRefreshRate()));
-            line(s,"Rotation",String.valueOf(c.getWindowManager().getDefaultDisplay().getRotation()));
+            line(s,"Refresh rate Hz",String.valueOf(((android.view.WindowManager)c.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRefreshRate()));
+            line(s,"Rotation",String.valueOf(((android.view.WindowManager)c.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay().getRotation()));
             Configuration cfg=c.getResources().getConfiguration();
             line(s,"Orientation",String.valueOf(cfg.orientation));
             line(s,"Screen layout",String.valueOf(cfg.screenLayout));
@@ -214,7 +214,7 @@ final class ExtendedDiagnostics {
         line(s,"App package",c.getPackageName());
         line(s,"App version",String.valueOf(getVersion(c)));
         line(s,"App data dir",c.getFilesDir().getAbsolutePath());
-        line(s,"Process name",Build.VERSION.SDK_INT>=28?ApplicationInfo.getProcessName():"API<28");
+        line(s,"Process name",Build.VERSION.SDK_INT>=28?android.app.Application.getProcessName():"API<28");
         s.append("End of extended diagnostics. Values are limited to information Android exposes to an ordinary app.\n");
     }
 
