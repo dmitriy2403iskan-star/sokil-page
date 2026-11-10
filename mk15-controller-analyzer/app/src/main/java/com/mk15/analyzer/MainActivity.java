@@ -88,6 +88,7 @@ public class MainActivity extends Activity {
         });
         updates.setOnClickListener(v -> UpdateManager.checkForUpdates(this, true));
         output.setText("Готово к диагностике. Для проверки стиков сначала запусти тест ввода.");
+        UpdateManager.onAppStart(this);
         UpdateManager.checkForUpdates(this, false);
     }
 
