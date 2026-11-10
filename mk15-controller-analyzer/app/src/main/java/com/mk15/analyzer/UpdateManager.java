@@ -34,11 +34,39 @@ final class UpdateManager {
     private static final String KEY_HASH = "expected_sha256";
     private static final String KEY_FILE = "download_file";
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
+    private static final String KEY_LOG = "event_log";
+
+    static void record(Context context, String event) {
+        try {
+            android.content.SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            String old = p.getString(KEY_LOG, "");
+            String line = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+                .format(new java.util.Date()) + " | " + event + "\\n";
+            String next = old + line;
+            String[] lines = next.split("\\n");
+            if (lines.length > 60) {
+                StringBuilder kept = new StringBuilder();
+                for (int i = lines.length - 60; i < lines.length; i++)
+                    if (!lines[i].isEmpty()) kept.append(lines[i]).append("\\n");
+                next = kept.toString();
+            }
+            p.edit().putString(KEY_LOG, next).apply();
+        } catch (Exception ignored) {}
+    }
+
+    static void appendDiagnostics(Context context, StringBuilder report) {
+        report.append("\\n=== UPDATE HISTORY ===\\n");
+        String log = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LOG, "");
+        report.append(log.isEmpty() ? "No update events recorded.\\n" : log);
+        report.append("Current app version: ").append(BuildConfig.VERSION_NAME)
+            .append(" (code ").append(BuildConfig.VERSION_CODE).append(")\\n");
+    }
 
     private UpdateManager() {}
 
     static void checkForUpdates(Activity activity, boolean manual) {
         if (activity.isFinishing()) return;
+        record(activity, manual ? "manual_update_check_started" : "startup_update_check_started");
         new Thread(() -> {
             HttpURLConnection c = null;
             try {
@@ -66,6 +94,7 @@ final class UpdateManager {
                     }
                 }
                 if (remoteCode <= BuildConfig.VERSION_CODE || apk == null) {
+                    record(activity, "no_update_available_or_release_asset_missing; remoteCode=" + remoteCode);
                     if (manual) MAIN.post(() -> Toast.makeText(activity, "Обновлений пока нет.", Toast.LENGTH_LONG).show());
                     return;
                 }
@@ -75,6 +104,7 @@ final class UpdateManager {
                 String hash = digest.substring("sha256:".length()).toLowerCase();
                 String version = release.optString("name", tag);
                 String notes = release.optString("body", "");
+                record(activity, "update_available; versionCode=" + remoteCode);
                 MAIN.post(() -> {
                     if (activity.isFinishing()) return;
                     new AlertDialog.Builder(activity)
@@ -87,6 +117,7 @@ final class UpdateManager {
                         .show();
                 });
             } catch (Exception e) {
+                record(activity, "update_check_failed; " + e.getClass().getSimpleName() + ": " + e.getMessage());
                 if (manual) MAIN.post(() -> Toast.makeText(activity, "Не удалось проверить обновления: " + e.getMessage(), Toast.LENGTH_LONG).show());
             } finally {
                 if (c != null) c.disconnect();
@@ -113,6 +144,7 @@ final class UpdateManager {
     }
 
     private static void download(Activity activity, String url, String expectedHash, int version) {
+        record(activity, "download_requested; versionCode=" + version);
         try {
             File dir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
             if (dir == null) throw new Exception("Нет доступной папки для загрузки");
@@ -145,8 +177,10 @@ final class UpdateManager {
             };
             ContextCompat.registerReceiver(activity, receiver,
                 new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_NOT_EXPORTED);
+            record(activity, "download_enqueued; id=" + id + "; versionCode=" + version);
             Toast.makeText(activity, "Загрузка началась. Дождись уведомления.", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
+            record(activity, "download_start_failed; " + e.getClass().getSimpleName() + ": " + e.getMessage());
             new AlertDialog.Builder(activity).setTitle("Ошибка загрузки")
                 .setMessage(e.getMessage()).setPositiveButton("ОК", null).show();
         }
@@ -173,12 +207,18 @@ final class UpdateManager {
             File file = new File(path);
             if (!file.isFile() || file.length() == 0) throw new Exception("APK-файл пуст или отсутствует");
             String actual = sha256(file);
-            if (!actual.equalsIgnoreCase(expected)) throw new Exception("SHA-256 не совпал. APK удалён из соображений безопасности.");
+            if (!actual.equalsIgnoreCase(expected)) {
+                record(activity, "download_integrity_failed; expected_sha256_mismatch");
+                file.delete();
+                throw new Exception("SHA-256 не совпал. APK удалён из соображений безопасности.");
+            }
+            record(activity, "download_complete_and_hash_verified; bytes=" + file.length());
             new AlertDialog.Builder(activity).setTitle("Обновление скачано")
                 .setMessage("Контрольная сумма совпала. Android проверит подпись приложения при установке.")
                 .setPositiveButton("Установить", (d, w) -> install(activity, file))
                 .setNegativeButton("Позже", null).show();
         } catch (Exception e) {
+            record(activity, "download_or_verification_failed; " + e.getClass().getSimpleName() + ": " + e.getMessage());
             new AlertDialog.Builder(activity).setTitle("Не удалось подготовить обновление")
                 .setMessage(e.getMessage()).setPositiveButton("ОК", null).show();
         }
@@ -198,7 +238,9 @@ final class UpdateManager {
 
     private static void install(Activity activity, File file) {
         try {
+            record(activity, "install_requested");
             if (Build.VERSION.SDK_INT >= 26 && !activity.getPackageManager().canRequestPackageInstalls()) {
+                record(activity, "install_permission_missing");
                 new AlertDialog.Builder(activity)
                     .setTitle("Разрешение на установку")
                     .setMessage("Разреши установку APK для MK15 Toolkit в настройках Android, затем вернись в приложение и нажми «Установить» ещё раз.")
@@ -214,7 +256,9 @@ final class UpdateManager {
             intent.setData(uri);
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             activity.startActivity(intent);
+            record(activity, "android_package_installer_opened");
         } catch (Exception e) {
+            record(activity, "installer_launch_failed; " + e.getClass().getSimpleName() + ": " + e.getMessage());
             new AlertDialog.Builder(activity).setTitle("Установка не запущена")
                 .setMessage(e.getMessage()).setPositiveButton("ОК", null).show();
         }
